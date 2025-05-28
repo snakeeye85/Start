@@ -1,5 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  BarElement,
+} from 'chart.js';
+import { Line, Pie, Bar } from 'react-chartjs-2';
 import './App.css';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  BarElement
+);
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
@@ -8,7 +33,8 @@ function App() {
   const [userData, setUserData] = useState(null);
   const [stakes, setStakes] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [stats, setStats] = useState({});
+  const [analytics, setAnalytics] = useState(null);
+  const [platformAnalytics, setPlatformAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   
@@ -23,8 +49,9 @@ function App() {
       fetchUserData();
       fetchUserStakes();
       fetchUserTransactions();
+      fetchUserAnalytics();
     }
-    fetchStats();
+    fetchPlatformAnalytics();
   }, [currentUser]);
 
   const fetchUserData = async () => {
@@ -57,13 +84,23 @@ function App() {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchUserAnalytics = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stats`);
+      const response = await fetch(`${API_BASE_URL}/api/users/${currentUser}/analytics`);
       const data = await response.json();
-      setStats(data);
+      setAnalytics(data);
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('Error fetching analytics:', error);
+    }
+  };
+
+  const fetchPlatformAnalytics = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/analytics/platform`);
+      const data = await response.json();
+      setPlatformAnalytics(data);
+    } catch (error) {
+      console.error('Error fetching platform analytics:', error);
     }
   };
 
@@ -130,6 +167,7 @@ function App() {
           setDepositAmount('');
           fetchUserData();
           fetchUserTransactions();
+          fetchUserAnalytics();
         } else {
           window.open(data.payment_url, '_blank');
           setDepositAmount('');
@@ -166,6 +204,7 @@ function App() {
         fetchUserData();
         fetchUserStakes();
         fetchUserTransactions();
+        fetchUserAnalytics();
       } else {
         alert(data.detail);
       }
@@ -187,6 +226,7 @@ function App() {
         fetchUserData();
         fetchUserStakes();
         fetchUserTransactions();
+        fetchUserAnalytics();
       } else {
         alert(data.detail);
       }
@@ -194,6 +234,141 @@ function App() {
       alert('Error unstaking');
     }
     setLoading(false);
+  };
+
+  // Chart configurations
+  const getPerformanceChartData = () => {
+    if (!analytics?.performance?.daily_data) return null;
+    
+    const data = analytics.performance.daily_data;
+    return {
+      labels: data.map(d => new Date(d.date).toLocaleDateString()),
+      datasets: [
+        {
+          label: 'Daily Rewards',
+          data: data.map(d => d.daily_rewards),
+          borderColor: 'rgba(34, 197, 94, 1)',
+          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          fill: true,
+          tension: 0.4,
+        },
+        {
+          label: 'Cumulative Earnings',
+          data: data.map(d => d.cumulative_earnings),
+          borderColor: 'rgba(59, 130, 246, 1)',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.4,
+          yAxisID: 'y1',
+        }
+      ]
+    };
+  };
+
+  const getPortfolioChartData = () => {
+    if (!analytics?.portfolio) return null;
+    
+    const portfolio = analytics.portfolio;
+    return {
+      labels: ['Active Stakes', 'Completed Stakes'],
+      datasets: [
+        {
+          data: [portfolio.active_stakes, portfolio.completed_stakes],
+          backgroundColor: [
+            'rgba(34, 197, 94, 0.8)',
+            'rgba(168, 85, 247, 0.8)',
+          ],
+          borderColor: [
+            'rgba(34, 197, 94, 1)',
+            'rgba(168, 85, 247, 1)',
+          ],
+          borderWidth: 2,
+        }
+      ]
+    };
+  };
+
+  const getPlatformChartData = () => {
+    if (!platformAnalytics?.daily_stats) return null;
+    
+    const data = platformAnalytics.daily_stats.slice(-7); // Last 7 days
+    return {
+      labels: data.map(d => new Date(d.date).toLocaleDateString()),
+      datasets: [
+        {
+          label: 'New Users',
+          data: data.map(d => d.new_users),
+          backgroundColor: 'rgba(34, 197, 94, 0.8)',
+        },
+        {
+          label: 'New Stakes',
+          data: data.map(d => d.new_stakes),
+          backgroundColor: 'rgba(59, 130, 246, 0.8)',
+        },
+        {
+          label: 'Rewards Distributed',
+          data: data.map(d => d.rewards_distributed),
+          backgroundColor: 'rgba(168, 85, 247, 0.8)',
+        }
+      ]
+    };
+  };
+
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: 'white'
+        }
+      },
+      title: {
+        display: true,
+        color: 'white'
+      },
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: 'white'
+        },
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        }
+      },
+      y: {
+        ticks: {
+          color: 'white'
+        },
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)'
+        }
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        ticks: {
+          color: 'white'
+        },
+        grid: {
+          drawOnChartArea: false,
+        },
+      },
+    },
+  };
+
+  const pieOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          color: 'white'
+        }
+      },
+    },
   };
 
   if (!currentUser) {
@@ -212,15 +387,15 @@ function App() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span>Total Users:</span>
-                  <span className="font-bold">{stats.total_users || 0}</span>
+                  <span className="font-bold">{platformAnalytics?.overview?.total_users || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Total Staked:</span>
-                  <span className="font-bold">{stats.total_staked?.toFixed(2) || '0.00'} USDT</span>
+                  <span className="font-bold">{platformAnalytics?.overview?.total_staked?.toFixed(2) || '0.00'} USDT</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Rewards Distributed:</span>
-                  <span className="font-bold">{stats.total_rewards_distributed?.toFixed(2) || '0.00'} USDT</span>
+                  <span className="font-bold">{platformAnalytics?.overview?.total_rewards_distributed?.toFixed(2) || '0.00'} USDT</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Daily APY:</span>
@@ -318,20 +493,20 @@ function App() {
                 <p className="text-xl font-bold text-green-400">{userData.total_rewards?.toFixed(2)} USDT</p>
               </div>
               <div className="text-center">
-                <p className="text-sm opacity-70">User ID</p>
-                <p className="text-xs font-mono">{currentUser.substring(0, 8)}...</p>
+                <p className="text-sm opacity-70">ROI</p>
+                <p className="text-xl font-bold text-green-400">{analytics?.overview?.roi_percentage?.toFixed(1) || 0}%</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Tabs */}
-        <div className="flex space-x-1 mb-8">
-          {['dashboard', 'deposit', 'stake', 'transactions'].map((tab) => (
+        <div className="flex space-x-1 mb-8 overflow-x-auto">
+          {['dashboard', 'analytics', 'deposit', 'stake', 'transactions'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 rounded-lg font-medium capitalize transition-all ${
+              className={`px-6 py-3 rounded-lg font-medium capitalize transition-all whitespace-nowrap ${
                 activeTab === tab
                   ? 'bg-white text-purple-900'
                   : 'bg-white/20 text-white hover:bg-white/30'
@@ -373,27 +548,174 @@ function App() {
             </div>
 
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
-              <h3 className="text-2xl font-bold text-white mb-4">Quick Actions</h3>
-              <div className="space-y-4">
-                <button
-                  onClick={() => setActiveTab('deposit')}
-                  className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 rounded-lg font-bold hover:from-green-600 hover:to-blue-600 transition-all"
-                >
-                  Deposit USDT
-                </button>
-                <button
-                  onClick={() => setActiveTab('stake')}
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-bold hover:from-purple-600 hover:to-pink-600 transition-all"
-                >
-                  Stake USDT
-                </button>
-                <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4">
-                  <p className="text-yellow-300 text-sm font-medium">
-                    💡 Daily rewards are automatically distributed every 24 hours at 30% APY
-                  </p>
+              <h3 className="text-2xl font-bold text-white mb-4">Performance Overview</h3>
+              {analytics && (
+                <div className="space-y-4 text-white">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/10 rounded-lg p-3 text-center">
+                      <p className="text-sm opacity-70">Total Invested</p>
+                      <p className="text-lg font-bold">{analytics.overview?.total_invested?.toFixed(2)} USDT</p>
+                    </div>
+                    <div className="bg-white/10 rounded-lg p-3 text-center">
+                      <p className="text-sm opacity-70">Total Earned</p>
+                      <p className="text-lg font-bold text-green-400">{analytics.overview?.total_earned?.toFixed(2)} USDT</p>
+                    </div>
+                    <div className="bg-white/10 rounded-lg p-3 text-center">
+                      <p className="text-sm opacity-70">Daily Projected</p>
+                      <p className="text-lg font-bold text-blue-400">{analytics.projections?.daily_projected?.toFixed(2)} USDT</p>
+                    </div>
+                    <div className="bg-white/10 rounded-lg p-3 text-center">
+                      <p className="text-sm opacity-70">Monthly Projected</p>
+                      <p className="text-lg font-bold text-purple-400">{analytics.projections?.monthly_projected?.toFixed(2)} USDT</p>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setActiveTab('deposit')}
+                      className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 rounded-lg font-bold hover:from-green-600 hover:to-blue-600 transition-all"
+                    >
+                      Deposit USDT
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('stake')}
+                      className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-bold hover:from-purple-600 hover:to-pink-600 transition-all"
+                    >
+                      Stake USDT
+                    </button>
+                  </div>
+                  
+                  <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4">
+                    <p className="text-yellow-300 text-sm font-medium">
+                      💡 Daily rewards are automatically distributed every 24 hours at 30% APY
+                    </p>
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'analytics' && (
+          <div className="space-y-8">
+            {/* Performance Charts */}
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Performance Timeline</h3>
+                {getPerformanceChartData() && (
+                  <div className="h-64">
+                    <Line data={getPerformanceChartData()} options={{...chartOptions, plugins: {...chartOptions.plugins, title: {display: true, text: 'Daily & Cumulative Rewards', color: 'white'}}}} />
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Portfolio Distribution</h3>
+                {getPortfolioChartData() && (
+                  <div className="h-64">
+                    <Pie data={getPortfolioChartData()} options={pieOptions} />
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Analytics Cards */}
+            {analytics && (
+              <div className="grid md:grid-cols-3 gap-6">
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 text-white">
+                  <h4 className="text-lg font-bold mb-3">🎯 Milestones</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Biggest Stake:</span>
+                      <span className="font-bold">{analytics.milestones?.biggest_stake?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Total Transactions:</span>
+                      <span className="font-bold">{analytics.milestones?.total_transactions}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Rewards Received:</span>
+                      <span className="font-bold">{analytics.milestones?.reward_transactions}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Days Active:</span>
+                      <span className="font-bold">{analytics.overview?.days_active}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 text-white">
+                  <h4 className="text-lg font-bold mb-3">📈 Performance</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Best Day:</span>
+                      <span className="font-bold text-green-400">{analytics.performance?.best_day?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Average Daily:</span>
+                      <span className="font-bold">{analytics.performance?.average_daily?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">ROI:</span>
+                      <span className="font-bold text-green-400">{analytics.overview?.roi_percentage?.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Active Stakes:</span>
+                      <span className="font-bold">{analytics.portfolio?.active_stakes}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 text-white">
+                  <h4 className="text-lg font-bold mb-3">🔮 Projections</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Weekly:</span>
+                      <span className="font-bold text-blue-400">{analytics.projections?.weekly_projected?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Monthly:</span>
+                      <span className="font-bold text-purple-400">{analytics.projections?.monthly_projected?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm opacity-70">Yearly:</span>
+                      <span className="font-bold text-yellow-400">{analytics.projections?.yearly_projected?.toFixed(2)} USDT</span>
+                    </div>
+                    <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-2 mt-3">
+                      <p className="text-green-300 text-xs text-center">
+                        Based on current staked amount
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Platform Analytics */}
+            {platformAnalytics && (
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
+                <h3 className="text-2xl font-bold text-white mb-4">Platform Analytics (Last 7 Days)</h3>
+                <div className="h-64 mb-4">
+                  {getPlatformChartData() && (
+                    <Bar data={getPlatformChartData()} options={{...chartOptions, plugins: {...chartOptions.plugins, title: {display: true, text: 'Platform Activity', color: 'white'}}}} />
+                  )}
+                </div>
+                <div className="grid md:grid-cols-3 gap-4 text-white">
+                  <div className="bg-white/10 rounded-lg p-4 text-center">
+                    <p className="text-sm opacity-70">New Users (7d)</p>
+                    <p className="text-xl font-bold">{platformAnalytics.recent_activity?.new_users_7d}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-4 text-center">
+                    <p className="text-sm opacity-70">New Stakes (7d)</p>
+                    <p className="text-xl font-bold">{platformAnalytics.recent_activity?.new_stakes_7d}</p>
+                  </div>
+                  <div className="bg-white/10 rounded-lg p-4 text-center">
+                    <p className="text-sm opacity-70">Transactions (7d)</p>
+                    <p className="text-xl font-bold">{platformAnalytics.recent_activity?.transactions_7d}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -437,12 +759,12 @@ function App() {
           <div className="max-w-2xl mx-auto">
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
               <h3 className="text-2xl font-bold text-white mb-4">Stake USDT</h3>
+              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 mb-4">
+                <p className="text-green-300 text-sm font-medium">
+                  🚀 Earn 30% daily returns on your staked USDT!
+                </p>
+              </div>
               <div className="space-y-4">
-                <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 mb-4">
-                  <p className="text-green-300 text-sm font-medium">
-                    🚀 Earn 30% daily returns on your staked USDT!
-                  </p>
-                </div>
                 <input
                   type="number"
                   placeholder="Amount to stake"
@@ -456,6 +778,25 @@ function App() {
                 <p className="text-white/70 text-sm">
                   Available balance: {userData?.balance?.toFixed(2) || '0.00'} USDT
                 </p>
+                {analytics && (
+                  <div className="bg-white/10 rounded-lg p-4">
+                    <h4 className="text-white font-bold mb-2">Expected Returns</h4>
+                    <div className="grid grid-cols-3 gap-4 text-white text-sm">
+                      <div className="text-center">
+                        <p className="opacity-70">Daily</p>
+                        <p className="font-bold">{(parseFloat(stakeAmount || 0) * 0.30).toFixed(2)} USDT</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="opacity-70">Weekly</p>
+                        <p className="font-bold">{(parseFloat(stakeAmount || 0) * 0.30 * 7).toFixed(2)} USDT</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="opacity-70">Monthly</p>
+                        <p className="font-bold">{(parseFloat(stakeAmount || 0) * 0.30 * 30).toFixed(2)} USDT</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={handleStake}
                   disabled={loading}
@@ -475,7 +816,13 @@ function App() {
               {transactions.map((tx) => (
                 <div key={tx.id} className="bg-white/10 rounded-lg p-4 flex justify-between items-center">
                   <div className="text-white">
-                    <p className="font-medium capitalize">{tx.type}</p>
+                    <p className="font-medium capitalize flex items-center">
+                      {tx.type}
+                      {tx.type === 'deposit' && '💰'}
+                      {tx.type === 'stake' && '🔒'}
+                      {tx.type === 'unstake' && '🔓'}
+                      {tx.type === 'reward' && '🎁'}
+                    </p>
                     <p className="text-sm opacity-70">{new Date(tx.created_at).toLocaleString()}</p>
                   </div>
                   <div className="text-right">
