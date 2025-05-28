@@ -221,6 +221,150 @@ class USDTStakingAPITester:
             print(f"Daily APY: {response.get('daily_apy', 'N/A')}")
         return success
     
+    def test_user_analytics(self):
+        """Test user analytics endpoint"""
+        if not self.user_id:
+            print("❌ No user ID available for testing")
+            return False
+        
+        success, response = self.run_test(
+            "User Analytics",
+            "GET",
+            f"/api/users/{self.user_id}/analytics",
+            200
+        )
+        
+        if success:
+            # Verify analytics structure
+            if 'overview' not in response:
+                print("❌ Missing 'overview' section in analytics")
+                return False
+                
+            if 'performance' not in response:
+                print("❌ Missing 'performance' section in analytics")
+                return False
+                
+            if 'portfolio' not in response:
+                print("❌ Missing 'portfolio' section in analytics")
+                return False
+                
+            if 'projections' not in response:
+                print("❌ Missing 'projections' section in analytics")
+                return False
+                
+            if 'milestones' not in response:
+                print("❌ Missing 'milestones' section in analytics")
+                return False
+            
+            # Verify key metrics
+            print(f"ROI: {response['overview'].get('roi_percentage', 'N/A')}%")
+            print(f"Daily projected earnings: {response['projections'].get('daily_projected', 'N/A')} USDT")
+            print(f"Monthly projected earnings: {response['projections'].get('monthly_projected', 'N/A')} USDT")
+            
+            # Verify daily data for charts
+            daily_data = response['performance'].get('daily_data', [])
+            print(f"Daily data points for charts: {len(daily_data)}")
+            
+            # Verify portfolio breakdown
+            active_stakes = response['portfolio'].get('active_stakes', 0)
+            completed_stakes = response['portfolio'].get('completed_stakes', 0)
+            print(f"Portfolio: {active_stakes} active stakes, {completed_stakes} completed stakes")
+            
+            return True
+        return False
+    
+    def test_platform_analytics(self):
+        """Test platform analytics endpoint"""
+        success, response = self.run_test(
+            "Platform Analytics",
+            "GET",
+            "/api/analytics/platform",
+            200
+        )
+        
+        if success:
+            # Verify analytics structure
+            if 'overview' not in response:
+                print("❌ Missing 'overview' section in platform analytics")
+                return False
+                
+            if 'recent_activity' not in response:
+                print("❌ Missing 'recent_activity' section in platform analytics")
+                return False
+                
+            if 'daily_stats' not in response:
+                print("❌ Missing 'daily_stats' section in platform analytics")
+                return False
+                
+            if 'performance' not in response:
+                print("❌ Missing 'performance' section in platform analytics")
+                return False
+            
+            # Verify key metrics
+            print(f"Total users: {response['overview'].get('total_users', 'N/A')}")
+            print(f"Total staked: {response['overview'].get('total_staked', 'N/A')} USDT")
+            print(f"Total rewards distributed: {response['overview'].get('total_rewards_distributed', 'N/A')} USDT")
+            
+            # Verify daily stats for charts
+            daily_stats = response.get('daily_stats', [])
+            print(f"Daily stats points for charts: {len(daily_stats)}")
+            
+            # Verify recent activity
+            print(f"New users (7d): {response['recent_activity'].get('new_users_7d', 'N/A')}")
+            print(f"New stakes (7d): {response['recent_activity'].get('new_stakes_7d', 'N/A')}")
+            
+            return True
+        return False
+    
+    def verify_analytics_calculations(self):
+        """Verify analytics calculations are accurate"""
+        if not self.user_id:
+            print("❌ No user ID available for testing")
+            return False
+            
+        # Get user data
+        _, user_data = self.run_test(
+            "Get User Data for Calculation Verification",
+            "GET",
+            f"/api/users/{self.user_id}",
+            200
+        )
+        
+        # Get user analytics
+        _, analytics = self.run_test(
+            "Get User Analytics for Calculation Verification",
+            "GET",
+            f"/api/users/{self.user_id}/analytics",
+            200
+        )
+        
+        if not analytics or 'projections' not in analytics:
+            print("❌ Failed to get analytics data for verification")
+            return False
+            
+        # Verify daily projected calculation (30% of staked amount)
+        staked_amount = user_data.get('staked_amount', 0)
+        expected_daily = staked_amount * 0.30
+        actual_daily = analytics['projections'].get('daily_projected', 0)
+        
+        daily_calculation_correct = abs(expected_daily - actual_daily) < 0.01
+        if daily_calculation_correct:
+            print(f"✅ Daily projection calculation verified: {actual_daily} USDT")
+        else:
+            print(f"❌ Daily projection calculation incorrect: Expected {expected_daily}, got {actual_daily}")
+            
+        # Verify monthly projection (daily * 30)
+        expected_monthly = expected_daily * 30
+        actual_monthly = analytics['projections'].get('monthly_projected', 0)
+        
+        monthly_calculation_correct = abs(expected_monthly - actual_monthly) < 0.01
+        if monthly_calculation_correct:
+            print(f"✅ Monthly projection calculation verified: {actual_monthly} USDT")
+        else:
+            print(f"❌ Monthly projection calculation incorrect: Expected {expected_monthly}, got {actual_monthly}")
+            
+        return daily_calculation_correct and monthly_calculation_correct
+    
     def run_full_user_journey(self):
         """Test the complete user journey from registration to unstaking"""
         print("\n🔄 Starting complete user journey test...")
@@ -269,17 +413,61 @@ class USDTStakingAPITester:
             print("❌ User journey failed at step 7: Get transactions")
             return False
             
-        # Step 8: Unstake
-        if not self.test_unstake():
-            print("❌ User journey failed at step 8: Unstake")
+        # Step 8: Check user analytics
+        if not self.test_user_analytics():
+            print("❌ User journey failed at step 8: Check user analytics")
             return False
             
-        # Step 9: Final verification
+        # Step 9: Verify analytics calculations
+        if not self.verify_analytics_calculations():
+            print("❌ User journey failed at step 9: Verify analytics calculations")
+            return False
+            
+        # Step 10: Unstake
+        if not self.test_unstake():
+            print("❌ User journey failed at step 10: Unstake")
+            return False
+            
+        # Step 11: Check analytics after unstaking
+        if not self.test_user_analytics():
+            print("❌ User journey failed at step 11: Check analytics after unstaking")
+            return False
+            
+        # Step 12: Final verification
         if not self.test_get_user():
-            print("❌ User journey failed at step 9: Final verification")
+            print("❌ User journey failed at step 12: Final verification")
             return False
             
         print("✅ Complete user journey test passed successfully!")
+        return True
+    
+    def run_analytics_tests(self):
+        """Run all analytics-related tests"""
+        print("\n🔄 Starting analytics tests...")
+        
+        # Test platform analytics
+        if not self.test_platform_analytics():
+            print("❌ Platform analytics test failed")
+            return False
+            
+        # Test basic stats endpoint (for backward compatibility)
+        if not self.test_get_stats():
+            print("❌ Basic stats endpoint test failed")
+            return False
+            
+        # If we have a user ID, test user analytics
+        if self.user_id:
+            if not self.test_user_analytics():
+                print("❌ User analytics test failed")
+                return False
+                
+            if not self.verify_analytics_calculations():
+                print("❌ Analytics calculations verification failed")
+                return False
+        else:
+            print("⚠️ Skipping user analytics tests (no user ID available)")
+            
+        print("✅ All analytics tests passed successfully!")
         return True
 
 def main():
@@ -289,11 +477,11 @@ def main():
     # Run basic tests
     tester.test_root()
     
-    # Run complete user journey test
-    tester.run_full_user_journey()
+    # Run analytics tests
+    tester.run_analytics_tests()
     
-    # Run platform stats test
-    tester.test_get_stats()
+    # Run complete user journey test with analytics
+    tester.run_full_user_journey()
 
     # Print results
     print(f"\n📊 Tests passed: {tester.tests_passed}/{tester.tests_run}")
