@@ -125,8 +125,15 @@ function App() {
       });
       const data = await response.json();
       if (response.ok) {
-        window.open(data.payment_url, '_blank');
-        setDepositAmount('');
+        if (data.demo_mode) {
+          alert('Demo Mode: Your balance has been credited automatically! You can now stake USDT.');
+          setDepositAmount('');
+          fetchUserData();
+          fetchUserTransactions();
+        } else {
+          window.open(data.payment_url, '_blank');
+          setDepositAmount('');
+        }
       } else {
         alert(data.detail);
       }
