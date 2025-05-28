@@ -91,13 +91,13 @@ class USDTStakingAPITester:
         return success
 
     def test_create_payment(self):
-        """Test payment creation"""
+        """Test payment creation with demo mode"""
         if not self.user_id:
             print("❌ No user ID available for testing")
             return False
         
         success, response = self.run_test(
-            "Create Payment",
+            "Create Payment (Demo Mode)",
             "POST",
             "/api/payments/create",
             200,
@@ -109,24 +109,44 @@ class USDTStakingAPITester:
         if success:
             print(f"Payment URL: {response.get('payment_url', 'N/A')}")
             print(f"Payment ID: {response.get('payment_id', 'N/A')}")
+            if response.get('demo_mode'):
+                print("✅ Demo mode activated: Balance credited automatically")
+            else:
+                print("❌ Demo mode not activated")
         return success
 
     def test_create_stake(self):
-        """Test stake creation (this will fail without balance)"""
+        """Test stake creation with credited balance"""
         if not self.user_id:
             print("❌ No user ID available for testing")
             return False
         
+        # First check if user has balance
+        _, user_data = self.run_test(
+            "Check User Balance Before Staking",
+            "GET",
+            f"/api/users/{self.user_id}",
+            200
+        )
+        
+        if user_data.get('balance', 0) < 50:
+            print(f"⚠️ User balance ({user_data.get('balance', 0)}) is less than 50 USDT, staking may fail")
+        
         success, response = self.run_test(
-            "Create Stake (Expected to fail without balance)",
+            "Create Stake",
             "POST",
             "/api/stake",
-            400,  # Expecting 400 since we have no balance
+            200,  # Now expecting 200 since we should have balance from demo mode
             data={
                 "user_id": self.user_id,
                 "amount": 50.0
             }
         )
+        
+        if success and 'stake_id' in response:
+            self.stake_id = response['stake_id']
+            print(f"Created stake with ID: {self.stake_id}")
+        
         return success
 
     def test_get_user_stakes(self):
@@ -143,6 +163,10 @@ class USDTStakingAPITester:
         )
         if success:
             print(f"User has {len(response)} stakes")
+            # Check if stakes are properly formatted
+            if len(response) > 0:
+                stake = response[0]
+                print(f"Stake details: Amount={stake.get('amount')}, Active={stake.get('is_active')}, Earned={stake.get('total_earned')}")
         return success
 
     def test_get_user_transactions(self):
@@ -159,6 +183,29 @@ class USDTStakingAPITester:
         )
         if success:
             print(f"User has {len(response)} transactions")
+            # Check transaction types
+            tx_types = set([tx.get('type') for tx in response])
+            print(f"Transaction types: {tx_types}")
+        return success
+
+    def test_unstake(self):
+        """Test unstaking functionality"""
+        if not self.stake_id:
+            print("❌ No stake ID available for testing")
+            return False
+        
+        success, response = self.run_test(
+            "Unstake Funds",
+            "POST",
+            f"/api/unstake/{self.stake_id}",
+            200
+        )
+        
+        if success:
+            print("Successfully unstaked funds")
+            # Verify user balance after unstaking
+            self.test_get_user()
+        
         return success
 
     def test_get_stats(self):
@@ -171,20 +218,81 @@ class USDTStakingAPITester:
         )
         if success:
             print(f"Platform stats: Users={response.get('total_users', 'N/A')}, Staked={response.get('total_staked', 'N/A')}")
+            print(f"Daily APY: {response.get('daily_apy', 'N/A')}")
         return success
+    
+    def run_full_user_journey(self):
+        """Test the complete user journey from registration to unstaking"""
+        print("\n🔄 Starting complete user journey test...")
+        
+        # Step 1: Create new user
+        if not self.test_create_user():
+            print("❌ User journey failed at step 1: Create user")
+            return False
+            
+        # Step 2: Get initial user data
+        if not self.test_get_user():
+            print("❌ User journey failed at step 2: Get user data")
+            return False
+            
+        # Step 3: Create payment (demo mode should credit balance)
+        if not self.test_create_payment():
+            print("❌ User journey failed at step 3: Create payment")
+            return False
+            
+        # Step 4: Verify balance was credited
+        _, user_data = self.run_test(
+            "Verify Balance After Deposit",
+            "GET",
+            f"/api/users/{self.user_id}",
+            200
+        )
+        
+        if user_data.get('balance', 0) <= 0:
+            print("❌ User journey failed: Balance not credited in demo mode")
+            return False
+        else:
+            print(f"✅ Balance credited: {user_data.get('balance')} USDT")
+            
+        # Step 5: Create stake
+        if not self.test_create_stake():
+            print("❌ User journey failed at step 5: Create stake")
+            return False
+            
+        # Step 6: Verify stakes
+        if not self.test_get_user_stakes():
+            print("❌ User journey failed at step 6: Get stakes")
+            return False
+            
+        # Step 7: Verify transactions
+        if not self.test_get_user_transactions():
+            print("❌ User journey failed at step 7: Get transactions")
+            return False
+            
+        # Step 8: Unstake
+        if not self.test_unstake():
+            print("❌ User journey failed at step 8: Unstake")
+            return False
+            
+        # Step 9: Final verification
+        if not self.test_get_user():
+            print("❌ User journey failed at step 9: Final verification")
+            return False
+            
+        print("✅ Complete user journey test passed successfully!")
+        return True
 
 def main():
     # Setup
     tester = USDTStakingAPITester()
     
-    # Run tests
+    # Run basic tests
     tester.test_root()
-    tester.test_create_user()
-    tester.test_get_user()
-    tester.test_create_payment()
-    tester.test_get_user_stakes()
-    tester.test_get_user_transactions()
-    tester.test_create_stake()
+    
+    # Run complete user journey test
+    tester.run_full_user_journey()
+    
+    # Run platform stats test
     tester.test_get_stats()
 
     # Print results
