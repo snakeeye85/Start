@@ -405,25 +405,174 @@ async def get_user_transactions(user_id: str):
         transaction["_id"] = str(transaction["_id"])
     return transactions
 
-@app.get("/api/stats")
-async def get_stats():
-    """Get platform statistics"""
-    total_users = db.users.count_documents({})
-    total_staked = db.users.aggregate([
-        {"$group": {"_id": None, "total": {"$sum": "$staked_amount"}}}
-    ])
-    total_staked = list(total_staked)
-    total_staked_amount = total_staked[0]["total"] if total_staked else 0
+@app.get("/api/users/{user_id}/analytics")
+async def get_user_analytics(user_id: str):
+    """Get comprehensive analytics for a user"""
+    user = db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     
-    total_rewards = db.users.aggregate([
-        {"$group": {"_id": None, "total": {"$sum": "$total_rewards"}}}
-    ])
-    total_rewards = list(total_rewards)
-    total_rewards_amount = total_rewards[0]["total"] if total_rewards else 0
+    # Get all stakes
+    stakes = list(db.stakes.find({"user_id": user_id}))
+    
+    # Get all transactions
+    transactions = list(db.transactions.find({"user_id": user_id}).sort("created_at", 1))
+    
+    # Calculate performance metrics
+    total_invested = sum([stake["amount"] for stake in stakes])
+    total_earned = user.get("total_rewards", 0)
+    current_staked = user.get("staked_amount", 0)
+    
+    # Calculate ROI
+    roi_percentage = (total_earned / total_invested * 100) if total_invested > 0 else 0
+    
+    # Generate daily performance data (last 30 days)
+    daily_data = []
+    current_date = datetime.utcnow() - timedelta(days=30)
+    cumulative_earnings = 0
+    
+    for i in range(30):
+        date = current_date + timedelta(days=i)
+        date_str = date.strftime("%Y-%m-%d")
+        
+        # Calculate rewards for this day
+        daily_rewards = 0
+        for tx in transactions:
+            tx_date = tx["created_at"].strftime("%Y-%m-%d")
+            if tx_date == date_str and tx["type"] == "reward":
+                daily_rewards += tx["amount"]
+        
+        cumulative_earnings += daily_rewards
+        daily_data.append({
+            "date": date_str,
+            "daily_rewards": daily_rewards,
+            "cumulative_earnings": cumulative_earnings,
+            "active_stakes": len([s for s in stakes if s["is_active"] and s["start_date"].date() <= date.date()])
+        })
+    
+    # Portfolio breakdown
+    portfolio_data = {
+        "active_stakes": len([s for s in stakes if s["is_active"]]),
+        "completed_stakes": len([s for s in stakes if not s["is_active"]]),
+        "total_stakes": len(stakes),
+        "average_stake_amount": total_invested / len(stakes) if stakes else 0
+    }
+    
+    # Projected earnings (next 30 days)
+    projected_daily = current_staked * 0.30
+    projected_monthly = projected_daily * 30
     
     return {
-        "total_users": total_users,
-        "total_staked": total_staked_amount,
-        "total_rewards_distributed": total_rewards_amount,
-        "daily_apy": "30%"
+        "overview": {
+            "total_invested": total_invested,
+            "total_earned": total_earned,
+            "current_staked": current_staked,
+            "current_balance": user.get("balance", 0),
+            "roi_percentage": roi_percentage,
+            "days_active": (datetime.utcnow() - user["created_at"]).days if user.get("created_at") else 0
+        },
+        "performance": {
+            "daily_data": daily_data,
+            "best_day": max(daily_data, key=lambda x: x["daily_rewards"])["daily_rewards"] if daily_data else 0,
+            "average_daily": sum([d["daily_rewards"] for d in daily_data]) / len(daily_data) if daily_data else 0
+        },
+        "portfolio": portfolio_data,
+        "projections": {
+            "daily_projected": projected_daily,
+            "weekly_projected": projected_daily * 7,
+            "monthly_projected": projected_monthly,
+            "yearly_projected": projected_daily * 365
+        },
+        "milestones": {
+            "first_stake_date": min([s["start_date"] for s in stakes]) if stakes else None,
+            "biggest_stake": max([s["amount"] for s in stakes]) if stakes else 0,
+            "total_transactions": len(transactions),
+            "reward_transactions": len([t for t in transactions if t["type"] == "reward"])
+        }
+    }
+
+@app.get("/api/analytics/platform")
+async def get_platform_analytics():
+    """Get platform-wide analytics"""
+    # Total stats
+    total_users = db.users.count_documents({})
+    
+    # Calculate total values using aggregation
+    total_staked_agg = list(db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$staked_amount"}}}
+    ]))
+    total_staked = total_staked_agg[0]["total"] if total_staked_agg else 0
+    
+    total_rewards_agg = list(db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$total_rewards"}}}
+    ]))
+    total_rewards = total_rewards_agg[0]["total"] if total_rewards_agg else 0
+    
+    total_balance_agg = list(db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$balance"}}}
+    ]))
+    total_balance = total_balance_agg[0]["total"] if total_balance_agg else 0
+    
+    # Active stakes
+    active_stakes = db.stakes.count_documents({"is_active": True})
+    total_stakes = db.stakes.count_documents({})
+    
+    # Recent activity (last 7 days)
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    recent_users = db.users.count_documents({"created_at": {"$gte": seven_days_ago}})
+    recent_stakes = db.stakes.count_documents({"start_date": {"$gte": seven_days_ago}})
+    recent_transactions = db.transactions.count_documents({"created_at": {"$gte": seven_days_ago}})
+    
+    # Daily stats for the last 30 days
+    daily_stats = []
+    for i in range(30):
+        date = datetime.utcnow() - timedelta(days=29-i)
+        start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = start_of_day + timedelta(days=1)
+        
+        daily_rewards = 0
+        reward_transactions = list(db.transactions.find({
+            "type": "reward",
+            "created_at": {"$gte": start_of_day, "$lt": end_of_day}
+        }))
+        daily_rewards = sum([tx["amount"] for tx in reward_transactions])
+        
+        new_users = db.users.count_documents({
+            "created_at": {"$gte": start_of_day, "$lt": end_of_day}
+        })
+        
+        new_stakes = db.stakes.count_documents({
+            "start_date": {"$gte": start_of_day, "$lt": end_of_day}
+        })
+        
+        daily_stats.append({
+            "date": date.strftime("%Y-%m-%d"),
+            "new_users": new_users,
+            "new_stakes": new_stakes,
+            "rewards_distributed": daily_rewards,
+            "transaction_count": db.transactions.count_documents({
+                "created_at": {"$gte": start_of_day, "$lt": end_of_day}
+            })
+        })
+    
+    return {
+        "overview": {
+            "total_users": total_users,
+            "total_staked": total_staked,
+            "total_rewards_distributed": total_rewards,
+            "total_platform_value": total_staked + total_balance,
+            "active_stakes": active_stakes,
+            "completion_rate": ((total_stakes - active_stakes) / total_stakes * 100) if total_stakes > 0 else 0
+        },
+        "recent_activity": {
+            "new_users_7d": recent_users,
+            "new_stakes_7d": recent_stakes,
+            "transactions_7d": recent_transactions
+        },
+        "daily_stats": daily_stats,
+        "performance": {
+            "avg_stake_amount": total_staked / active_stakes if active_stakes > 0 else 0,
+            "avg_user_balance": total_balance / total_users if total_users > 0 else 0,
+            "daily_apy": "30%"
+        }
     }
