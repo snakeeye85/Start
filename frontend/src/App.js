@@ -401,6 +401,11 @@ function App() {
           <div className="max-w-2xl mx-auto">
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6">
               <h3 className="text-2xl font-bold text-white mb-4">Deposit USDT</h3>
+              <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4 mb-4">
+                <p className="text-blue-300 text-sm font-medium">
+                  🚀 Demo Mode Active: For testing, your balance will be credited automatically
+                </p>
+              </div>
               <div className="space-y-4">
                 <input
                   type="number"
@@ -416,11 +421,11 @@ function App() {
                   disabled={loading}
                   className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white py-3 rounded-lg font-bold hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50"
                 >
-                  {loading ? 'Creating Payment...' : 'Deposit with USDT'}
+                  {loading ? 'Creating Payment...' : 'Deposit with USDT (Demo)'}
                 </button>
                 <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
                   <p className="text-blue-300 text-sm">
-                    💳 You'll be redirected to NOWPayments to complete your USDT deposit securely
+                    💳 In production, you'll be redirected to NOWPayments to complete your USDT deposit securely
                   </p>
                 </div>
               </div>
