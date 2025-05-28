@@ -576,3 +576,26 @@ async def get_platform_analytics():
             "daily_apy": "30%"
         }
     }
+
+@app.get("/api/stats")
+async def get_stats():
+    """Get basic platform statistics (for backward compatibility)"""
+    total_users = db.users.count_documents({})
+    total_staked = db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$staked_amount"}}}
+    ])
+    total_staked = list(total_staked)
+    total_staked_amount = total_staked[0]["total"] if total_staked else 0
+    
+    total_rewards = db.users.aggregate([
+        {"$group": {"_id": None, "total": {"$sum": "$total_rewards"}}}
+    ])
+    total_rewards = list(total_rewards)
+    total_rewards_amount = total_rewards[0]["total"] if total_rewards else 0
+    
+    return {
+        "total_users": total_users,
+        "total_staked": total_staked_amount,
+        "total_rewards_distributed": total_rewards_amount,
+        "daily_apy": "30%"
+    }
